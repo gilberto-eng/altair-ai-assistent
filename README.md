@@ -10,7 +10,9 @@ O objetivo do Altair é criar uma plataforma modular e extensível capaz de auxi
 
 ## Demo
 
-
+- [![Demo WhatsApp 14:11](assets/demo-1.gif)](assets/demo-1.mp4)
+- [![Demo WhatsApp 14:13](assets/demo-2.gif)](assets/demo-2.mp4)
+![alt text](image.png)
 
 ---
 
