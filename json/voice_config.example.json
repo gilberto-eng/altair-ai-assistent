@@ -1,0 +1,11 @@
+{
+    "provider": "elevenlabs",
+    "piper_model": "assets/piper/voices/pt_BR-faber-medium.onnx",
+    "piper_length_scale": "1.0",
+    "piper_noise_scale": "0.4",
+    "piper_noise_w": "0.5",
+    "piper_modo_pro": "1",
+    "eleven_api_key": "",
+    "eleven_voice_id": "",
+    "eleven_model_id": "eleven_multilingual_v2"
+}
