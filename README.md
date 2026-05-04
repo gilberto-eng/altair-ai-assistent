@@ -15,6 +15,10 @@ Altair é um assistente de inteligência artificial open-source que combina inte
 - Busca e uso de memoria de arquivos: extrai, resume e consulta conteudos de documentos locais.
 - Configuracao de voz e modelos LLM pela interface; inicialização opcional com Windows.
 
+## Interface
+
+![Interface principal do Altair](docs/images/interface-principal.jpg)
+
 ## Estrutura do projeto
 
 ```
