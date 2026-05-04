@@ -18,9 +18,14 @@ puppeteer_data/
 *.log
 data/json/
 data/memoria_arquivos.json
+data/cad/
+data/graficos/
+data/gráficos/
+data/macros/
 configs/groq_api_key.txt
 configs/remote_api_token.txt
 configs/apps.json
+json/voice_config.json
 .env
 
 # Modelos e pesos grandes

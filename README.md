@@ -76,6 +76,7 @@ node scripts/whatsapp/teste.js
 - `configs/groq_api_key.txt`: API key
 - `configs/remote_api_token.txt`: token remoto
 - `data/json/*.json`: configs do app/LLM/voz
+- `json/voice_config.example.json`: exemplo seguro de configuracao de voz (copie para `json/voice_config.json` localmente)
 
 Variaveis de ambiente:
 
@@ -86,9 +87,9 @@ Variaveis de ambiente:
 ## Observacoes
 
 - Pastas `data/` e `dist/` sao artefatos locais e ficam fora do git.
+- Nunca commite chaves reais (`GROQ`, `OpenAI`, `ElevenLabs`) ou tokens em JSON/TXT.
 - Para CAD/3D, configure as bibliotecas em `G:\bibliotecas` (cq_gears, cq_warehouse, cqparts).
 - O entrypoint recomendado e `main_entry.py`; `main.py` e legado.
 
 ---
-
 
