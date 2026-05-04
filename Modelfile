@@ -1,0 +1,7 @@
+FROM G:\assistente\models\phi-3-mini-4k-instruct-q4_k_m.gguf
+
+PARAMETER num_ctx 2048
+PARAMETER num_thread 6
+PARAMETER temperature 0.6
+
+SYSTEM Você é A.L.T.A.I.R, um assistente técnico e direto.

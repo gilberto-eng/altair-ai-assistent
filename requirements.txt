@@ -1,0 +1,24 @@
+﻿customtkinter
+fastapi
+faster-whisper
+numpy
+matplotlib
+pydantic
+pypdf
+psutil
+pygame
+pillow
+python-docx
+qrcode
+requests
+selenium
+sounddevice
+undetected-chromedriver
+uvicorn
+webdriver-manager
+cadquery
+pyvista
+pyvistaqt
+# Dev tools - install with: pip install -r requirements-dev.txt
+langchain-core>=0.3.0
+
