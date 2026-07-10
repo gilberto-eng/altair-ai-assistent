@@ -1,10 +1,10 @@
-﻿import json
+import faulthandler
 import ipaddress
+import json
 import os
 import socket
-import threading
 import sys
-import faulthandler
+import threading
 from difflib import get_close_matches
 
 try:
@@ -24,32 +24,37 @@ if "TCL_LIBRARY" not in os.environ or "TK_LIBRARY" not in os.environ:
     if os.path.isdir(tk_dir):
         os.environ.setdefault("TK_LIBRARY", tk_dir)
 
+import atexit
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from typing import Any, Dict, Optional
-import atexit
+from typing import Dict, Optional
+
+from automacao_core import encerrar_servidor_whatsapp_webjs
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QWidget
-from automacao_core import encerrar_servidor_whatsapp_webjs
+
 atexit.register(encerrar_servidor_whatsapp_webjs)
 
 from audio_core import iniciar_loop_audio
-from automacao_core import converter_para_ogg
-from automacao_core import enviar_arquivo_whatsapp_webjs
-from automacao_core import enviar_audio_whatsapp_webjs
-from automacao_core import fechar_driver_whatsapp
-atexit.register(fechar_driver_whatsapp)
+from automacao_core import (
+    converter_para_ogg,
+    enviar_arquivo_whatsapp_webjs,
+    enviar_audio_whatsapp_webjs,
+    fechar_driver_whatsapp,
+)
 
-from groq_core import GroqDualLLM
-from ia_core import IALocal
-from intent_router import executar_intencao, resolver_intencao_comando
-from voice import ElevenLabsVoice, PiperVoice
+atexit.register(fechar_driver_whatsapp)
 
 from app.application.command_service import CommandService
 from app.application.context_factory import build_intent_context
 from app.application.services.file_memory_service import FileMemoryService
 from app.interfaces.desktop_ui import DesktopUI
 from app.state.session_state import SessionState
+from groq_core import GroqDualLLM
+from ia_core import IALocal
+from intent_router import executar_intencao, resolver_intencao_comando
+from voice import ElevenLabsVoice, PiperVoice
+
 
 def _project_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -72,6 +77,7 @@ APP_CONFIG_FILE = os.path.join(_project_root(), "data", "json", "app_config.json
 state = SessionState()
 file_memory_service = FileMemoryService(memory_file=MEMORIA_ARQUIVOS_FILE)
 
+
 def carregar_memoria_arquivos():
     return file_memory_service.carregar_memoria_arquivos()
 
@@ -81,7 +87,9 @@ def salvar_memoria_arquivos(memoria):
 
 
 def extrair_texto_arquivo(caminho_arquivo, limite_chars=14000):
-    return file_memory_service.extrair_texto_arquivo(caminho_arquivo, limite_chars=limite_chars)
+    return file_memory_service.extrair_texto_arquivo(
+        caminho_arquivo, limite_chars=limite_chars
+    )
 
 
 def resumir_texto_arquivo(nome_arquivo, texto, llm):
@@ -95,7 +103,7 @@ def analisar_e_memorizar_arquivo(caminho_arquivo, llm):
 def _carregar_config_app() -> Dict[str, str]:
     if os.path.exists(APP_CONFIG_FILE):
         try:
-            with open(APP_CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(APP_CONFIG_FILE, encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, dict):
                 return data
@@ -205,10 +213,13 @@ def _carregar_token_remoto() -> str:
     if token_env:
         return token_env
 
-    token_file = os.getenv("ALTAIR_REMOTE_TOKEN_FILE", os.path.join(_project_root(), "configs", "remote_api_token.txt")).strip()
+    token_file = os.getenv(
+        "ALTAIR_REMOTE_TOKEN_FILE",
+        os.path.join(_project_root(), "configs", "remote_api_token.txt"),
+    ).strip()
     if token_file and os.path.exists(token_file):
         try:
-            with open(token_file, "r", encoding="utf-8") as f:
+            with open(token_file, encoding="utf-8") as f:
                 return f.read().strip()
         except Exception:
             return ""
@@ -219,7 +230,9 @@ def _startup_dir() -> str:
     appdata = os.getenv("APPDATA", "")
     if not appdata:
         return ""
-    return os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+    return os.path.join(
+        appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Startup"
+    )
 
 
 def _startup_cmd_path() -> str:
@@ -234,13 +247,34 @@ def _startup_ativo() -> bool:
     return bool(caminho and os.path.exists(caminho))
 
 
-def _habilitar_startup(exe_path: str) -> bool:
+def _startup_cmd_content(
+    exe_path: str,
+    project_root: str,
+    module_mode: bool = False,
+    script_path: Optional[str] = None,
+) -> str:
+    lines = ["@echo off", f'cd /d "{project_root}"']
+    if module_mode:
+        lines.append(f'start "" "{exe_path}" -m run_altair')
+    elif script_path:
+        lines.append(f'start "" "{exe_path}" "{script_path}"')
+    else:
+        lines.append(f'start "" "{exe_path}"')
+    return "\n".join(lines) + "\n"
+
+
+def _habilitar_startup(
+    exe_path: str,
+    project_root: str,
+    module_mode: bool = False,
+    script_path: Optional[str] = None,
+) -> bool:
     pasta = _startup_dir()
     if not pasta:
         return False
     os.makedirs(pasta, exist_ok=True)
     cmd_path = _startup_cmd_path()
-    conteudo = f'@echo off\nstart "" "{exe_path}"\n'
+    conteudo = _startup_cmd_content(exe_path, project_root, module_mode, script_path)
     try:
         with open(cmd_path, "w", encoding="utf-8") as f:
             f.write(conteudo)
@@ -261,14 +295,16 @@ def _desabilitar_startup() -> bool:
 
 
 def _alternar_startup_windows() -> Optional[bool]:
-    if not getattr(sys, "frozen", False):
-        messagebox.showwarning(
-            "Indisponivel",
-            "Esta opcao funciona apenas no executavel. Gere o Altair.exe e tente novamente.",
-        )
-        return None
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if getattr(sys, "frozen", False):
+        exe_path = sys.executable
+        module_mode = False
+        script_path = None
+    else:
+        exe_path = sys.executable
+        module_mode = True
+        script_path = None
 
-    exe_path = sys.executable
     if not exe_path or not os.path.exists(exe_path):
         messagebox.showerror("Erro", "Nao consegui localizar o executavel atual.")
         return None
@@ -281,7 +317,9 @@ def _alternar_startup_windows() -> Optional[bool]:
         messagebox.showerror("Erro", "Falha ao desativar a inicializacao.")
         return None
 
-    ok = _habilitar_startup(exe_path)
+    ok = _habilitar_startup(
+        exe_path, project_root, module_mode=module_mode, script_path=script_path
+    )
     if ok:
         messagebox.showinfo("Startup", "Altair sera iniciado junto com o Windows.")
         return True
@@ -291,7 +329,9 @@ def _alternar_startup_windows() -> Optional[bool]:
 
 def abrir_interface_conexao_remota(app_root: tk.Tk) -> None:
     if not FASTAPI_DISPONIVEL:
-        messagebox.showerror("Erro", "FastAPI/uvicorn nao encontrados. API remota desativada.")
+        messagebox.showerror(
+            "Erro", "FastAPI/uvicorn nao encontrados. API remota desativada."
+        )
         return
 
     try:
@@ -300,8 +340,7 @@ def abrir_interface_conexao_remota(app_root: tk.Tk) -> None:
     except Exception as e:
         messagebox.showerror(
             "Dependencia ausente",
-            "Para gerar QR code, instale 'qrcode' e 'pillow'.\n"
-            f"Detalhe: {e}",
+            "Para gerar QR code, instale 'qrcode' e 'pillow'.\n" f"Detalhe: {e}",
         )
         return
 
@@ -352,7 +391,9 @@ def abrir_interface_conexao_remota(app_root: tk.Tk) -> None:
     def copiar_url():
         app_root.clipboard_clear()
         app_root.clipboard_append(url)
-        messagebox.showinfo("Copiado", "URL remota copiada para a area de transferencia.")
+        messagebox.showinfo(
+            "Copiado", "URL remota copiada para a area de transferencia."
+        )
 
     tk.Button(win, text="Copiar URL", command=copiar_url).pack(pady=(2, 8))
 
@@ -360,9 +401,9 @@ def abrir_interface_conexao_remota(app_root: tk.Tk) -> None:
         "Se nao abrir no celular, defina ALTAIR_QR_HOST com o IP do PC na rede Wi-Fi. "
         "Para acesso externo a sua rede, configure ALTAIR_REMOTE_PUBLIC_URL."
     )
-    tk.Label(win, text=aviso_host, font=("Segoe UI", 9), wraplength=390, justify="left").pack(
-        padx=14, pady=(2, 0), anchor="w"
-    )
+    tk.Label(
+        win, text=aviso_host, font=("Segoe UI", 9), wraplength=390, justify="left"
+    ).pack(padx=14, pady=(2, 0), anchor="w")
 
 
 def montar_contexto_intencoes() -> Dict:
@@ -403,7 +444,9 @@ def detectar_wake_word(texto: str) -> bool:
     for palavra in candidatos:
         for wake in wake_words:
             wake_sem_espaco = wake.replace(" ", "")
-            parecido = get_close_matches(palavra, [wake, wake_sem_espaco], n=1, cutoff=0.6)
+            parecido = get_close_matches(
+                palavra, [wake, wake_sem_espaco], n=1, cutoff=0.6
+            )
             if parecido:
                 return True
     return False
@@ -421,6 +464,8 @@ def iniciar_audio() -> None:
         on_speak_end=lambda: ui.set_hud_responding(False),
         on_listen_level=ui.set_hud_audio_level,
     )
+
+
 JSON_FILE = os.path.join(_project_root(), "configs", "apps.json")
 LLM_CONFIG_FILE = os.path.join("json", "llm_provider_config.json")
 VOICE_CONFIG_FILE = os.path.join("json", "voice_config.json")
@@ -432,7 +477,7 @@ PROVEDORES_LLM = {
 }
 
 if os.path.exists(JSON_FILE):
-    with open(JSON_FILE, "r", encoding="utf-8") as f:
+    with open(JSON_FILE, encoding="utf-8") as f:
         APLICATIVOS_CONHECIDOS = json.load(f)
 else:
     APLICATIVOS_CONHECIDOS = {}
@@ -448,10 +493,13 @@ def _carregar_api_key_groq_padrao() -> str:
     if key_env:
         return key_env
 
-    key_file = os.getenv("GROQ_API_KEY_FILE", os.path.join(_project_root(), "configs", "groq_api_key.txt")).strip()
+    key_file = os.getenv(
+        "GROQ_API_KEY_FILE",
+        os.path.join(_project_root(), "configs", "groq_api_key.txt"),
+    ).strip()
     if key_file and os.path.exists(key_file):
         try:
-            with open(key_file, "r", encoding="utf-8") as f:
+            with open(key_file, encoding="utf-8") as f:
                 return f.read().strip()
         except Exception:
             return ""
@@ -472,10 +520,16 @@ def carregar_config_llm() -> Dict[str, str]:
     cfg = _config_llm_padrao()
     if os.path.exists(LLM_CONFIG_FILE):
         try:
-            with open(LLM_CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(LLM_CONFIG_FILE, encoding="utf-8") as f:
                 dados = json.load(f)
             if isinstance(dados, dict):
-                for k in ("provider", "api_key", "base_url", "model_main", "model_router"):
+                for k in (
+                    "provider",
+                    "api_key",
+                    "base_url",
+                    "model_main",
+                    "model_router",
+                ):
                     if k in dados and isinstance(dados[k], str):
                         cfg[k] = dados[k].strip()
         except Exception as e:
@@ -550,17 +604,23 @@ def abrir_interface_llm_config(app_root: tk.Tk) -> None:
     entry_key.insert(0, cfg_atual.get("api_key", ""))
     entry_key.pack(anchor="w", padx=14)
 
-    tk.Label(win, text="Base URL (custom/local)").pack(anchor="w", padx=14, pady=(10, 2))
+    tk.Label(win, text="Base URL (custom/local)").pack(
+        anchor="w", padx=14, pady=(10, 2)
+    )
     entry_base = tk.Entry(win, width=72)
     entry_base.insert(0, cfg_atual.get("base_url", ""))
     entry_base.pack(anchor="w", padx=14)
 
-    tk.Label(win, text="Modelo principal (respostas)").pack(anchor="w", padx=14, pady=(10, 2))
+    tk.Label(win, text="Modelo principal (respostas)").pack(
+        anchor="w", padx=14, pady=(10, 2)
+    )
     entry_main = tk.Entry(win, width=72)
     entry_main.insert(0, cfg_atual.get("model_main", ""))
     entry_main.pack(anchor="w", padx=14)
 
-    tk.Label(win, text="Modelo menor (interpretar comandos) - opcional").pack(anchor="w", padx=14, pady=(10, 2))
+    tk.Label(win, text="Modelo menor (interpretar comandos) - opcional").pack(
+        anchor="w", padx=14, pady=(10, 2)
+    )
     entry_router = tk.Entry(win, width=72)
     entry_router.insert(0, cfg_atual.get("model_router", ""))
     entry_router.pack(anchor="w", padx=14)
@@ -600,7 +660,9 @@ def abrir_interface_llm_config(app_root: tk.Tk) -> None:
             messagebox.showerror("Erro", "Informe o modelo principal.")
             return
         if prov in {"custom", "local"} and not base_url:
-            messagebox.showerror("Erro", "Informe a Base URL para provedor custom/local.")
+            messagebox.showerror(
+                "Erro", "Informe a Base URL para provedor custom/local."
+            )
             return
         if not model_router:
             model_router = model_main
@@ -608,7 +670,9 @@ def abrir_interface_llm_config(app_root: tk.Tk) -> None:
         cfg_novo = {
             "provider": prov,
             "api_key": api_key,
-            "base_url": base_url if prov in {"custom", "local"} else PROVEDORES_LLM[prov],
+            "base_url": (
+                base_url if prov in {"custom", "local"} else PROVEDORES_LLM[prov]
+            ),
             "model_main": model_main,
             "model_router": model_router,
         }
@@ -620,21 +684,27 @@ def abrir_interface_llm_config(app_root: tk.Tk) -> None:
         messagebox.showinfo("Sucesso", "Configuracao aplicada com sucesso.")
         win.destroy()
 
-    tk.Button(win, text="Salvar e aplicar", command=salvar_llm).pack(anchor="e", padx=14, pady=14)
+    tk.Button(win, text="Salvar e aplicar", command=salvar_llm).pack(
+        anchor="e", padx=14, pady=14
+    )
 
 
 def _config_voz_padrao() -> Dict[str, str]:
     base_dir = _project_root()
     return {
         "provider": "piper",
-        "piper_model": os.path.join(_project_root(), "assets", "piper", "voices", "pt_BR-faber-medium.onnx"),
+        "piper_model": os.path.join(
+            _project_root(), "assets", "piper", "voices", "pt_BR-faber-medium.onnx"
+        ),
         "piper_length_scale": "1.08",
         "piper_noise_scale": "0.38",
         "piper_noise_w": "0.52",
         "piper_modo_pro": "1",
         "eleven_api_key": os.getenv("ELEVENLABS_API_KEY", "").strip(),
         "eleven_voice_id": os.getenv("ELEVENLABS_VOICE_ID", "").strip(),
-        "eleven_model_id": os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2").strip(),
+        "eleven_model_id": os.getenv(
+            "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"
+        ).strip(),
     }
 
 
@@ -642,7 +712,7 @@ def carregar_config_voz() -> Dict[str, str]:
     cfg = _config_voz_padrao()
     if os.path.exists(VOICE_CONFIG_FILE):
         try:
-            with open(VOICE_CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(VOICE_CONFIG_FILE, encoding="utf-8") as f:
                 dados = json.load(f)
             if isinstance(dados, dict):
                 for k in cfg:
@@ -674,8 +744,15 @@ def _to_float(valor: str, padrao: float) -> float:
 
 
 def criar_voz_por_config(cfg: Dict[str, str]):
-    modelo = (cfg.get("piper_model") or "").strip() or _config_voz_padrao()["piper_model"]
-    modo_pro = str(cfg.get("piper_modo_pro", "1")).strip().lower() in {"1", "true", "sim", "yes"}
+    modelo = (cfg.get("piper_model") or "").strip() or _config_voz_padrao()[
+        "piper_model"
+    ]
+    modo_pro = str(cfg.get("piper_modo_pro", "1")).strip().lower() in {
+        "1",
+        "true",
+        "sim",
+        "yes",
+    }
     voz_piper = PiperVoice(
         modelo_path=modelo,
         modo_pro=modo_pro,
@@ -726,17 +803,21 @@ def abrir_interface_voz_config(app_root: tk.Tk) -> None:
     piper_model.pack(anchor="w", padx=14)
 
     def escolher_modelo_piper():
-        caminho = filedialog.askopenfilename(title="Selecionar modelo Piper", filetypes=[("ONNX", "*.onnx")])
+        caminho = filedialog.askopenfilename(
+            title="Selecionar modelo Piper", filetypes=[("ONNX", "*.onnx")]
+        )
         if not caminho:
             return
         piper_model.delete(0, tk.END)
         piper_model.insert(0, caminho)
 
-    tk.Button(win, text="Escolher modelo Piper", command=escolher_modelo_piper).pack(anchor="w", padx=14, pady=(6, 8))
-
-    tk.Label(win, text="Piper - length_scale | noise_scale | noise_w | modo_pro(1/0)").pack(
-        anchor="w", padx=14, pady=(4, 2)
+    tk.Button(win, text="Escolher modelo Piper", command=escolher_modelo_piper).pack(
+        anchor="w", padx=14, pady=(6, 8)
     )
+
+    tk.Label(
+        win, text="Piper - length_scale | noise_scale | noise_w | modo_pro(1/0)"
+    ).pack(anchor="w", padx=14, pady=(4, 2))
     frame_piper = tk.Frame(win)
     frame_piper.pack(anchor="w", padx=14)
     piper_len = tk.Entry(frame_piper, width=10)
@@ -813,7 +894,9 @@ def abrir_interface_voz_config(app_root: tk.Tk) -> None:
         messagebox.showinfo("Sucesso", "Configuracao de voz aplicada.")
         win.destroy()
 
-    tk.Button(win, text="Salvar e aplicar", command=salvar_voz).pack(anchor="e", padx=14, pady=14)
+    tk.Button(win, text="Salvar e aplicar", command=salvar_voz).pack(
+        anchor="e", padx=14, pady=14
+    )
 
 
 def abrir_interface_cadastro(app_root: tk.Tk) -> None:
@@ -825,7 +908,9 @@ def abrir_interface_cadastro(app_root: tk.Tk) -> None:
     entry_nome = tk.Entry(cadastro_win, width=40)
     entry_nome.pack(pady=5)
 
-    label_status = tk.Label(cadastro_win, text=f"{len(APLICATIVOS_CONHECIDOS)} apps cadastrados")
+    label_status = tk.Label(
+        cadastro_win, text=f"{len(APLICATIVOS_CONHECIDOS)} apps cadastrados"
+    )
     label_status.pack(pady=5)
 
     def adicionar_app():
@@ -846,9 +931,9 @@ def abrir_interface_cadastro(app_root: tk.Tk) -> None:
         entry_nome.delete(0, tk.END)
         label_status.config(text=f"{len(APLICATIVOS_CONHECIDOS)} apps cadastrados")
 
-    tk.Button(cadastro_win, text="Escolher executavel e adicionar", command=adicionar_app).pack(
-        pady=10
-    )
+    tk.Button(
+        cadastro_win, text="Escolher executavel e adicionar", command=adicionar_app
+    ).pack(pady=10)
 
 
 def atualizar_arquivo_selecionado(caminho: str) -> None:
@@ -858,8 +943,6 @@ def atualizar_arquivo_selecionado(caminho: str) -> None:
 def processar_comando_ui(comando: str) -> Dict[str, str]:
     with api_lock:
         return processar_comando_altair(comando, falar=False)
-
-
 
 
 def _qt_message_box(parent, icon, title: str, text: str) -> None:
@@ -872,42 +955,28 @@ def _qt_message_box(parent, icon, title: str, text: str) -> None:
     box.exec_()
 
 
-def _alternar_startup_windows() -> Optional[bool]:
-    from PyQt5.QtWidgets import QMessageBox
-
-    if not getattr(sys, "frozen", False):
-        _qt_message_box(None, QMessageBox.Warning, "Indisponivel", "Esta opcao funciona apenas no executavel. Gere o Altair.exe e tente novamente.")
-        return None
-
-    exe_path = sys.executable
-    if not exe_path or not os.path.exists(exe_path):
-        _qt_message_box(None, QMessageBox.Critical, "Erro", "Nao consegui localizar o executavel atual.")
-        return None
-
-    if _startup_ativo():
-        ok = _desabilitar_startup()
-        if ok:
-            _qt_message_box(None, QMessageBox.Information, "Startup", "Inicializacao com Windows desativada.")
-            return False
-        _qt_message_box(None, QMessageBox.Critical, "Erro", "Falha ao desativar a inicializacao.")
-        return None
-
-    ok = _habilitar_startup(exe_path)
-    if ok:
-        _qt_message_box(None, QMessageBox.Information, "Startup", "Altair sera iniciado junto com o Windows.")
-        return True
-    _qt_message_box(None, QMessageBox.Critical, "Erro", "Falha ao ativar a inicializacao.")
-    return None
-
-
 def abrir_interface_conexao_remota(parent: QWidget) -> None:
     from io import BytesIO
+
     from PyQt5.QtCore import Qt
     from PyQt5.QtGui import QPixmap
-    from PyQt5.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout, QApplication, QMessageBox
+    from PyQt5.QtWidgets import (
+        QApplication,
+        QDialog,
+        QLabel,
+        QLineEdit,
+        QMessageBox,
+        QPushButton,
+        QVBoxLayout,
+    )
 
     if not FASTAPI_DISPONIVEL:
-        _qt_message_box(parent, QMessageBox.Critical, "Erro", "FastAPI/uvicorn nao encontrados. API remota desativada.")
+        _qt_message_box(
+            parent,
+            QMessageBox.Critical,
+            "Erro",
+            "FastAPI/uvicorn nao encontrados. API remota desativada.",
+        )
         return
 
     try:
@@ -941,7 +1010,11 @@ def abrir_interface_conexao_remota(parent: QWidget) -> None:
     layout.addWidget(title)
 
     token_remoto = _carregar_token_remoto()
-    aviso_token = "Token remoto ativo. Informe o token no app remoto." if token_remoto else "A conexao remota esta sem token de autenticacao."
+    aviso_token = (
+        "Token remoto ativo. Informe o token no app remoto."
+        if token_remoto
+        else "A conexao remota esta sem token de autenticacao."
+    )
     aviso = QLabel(aviso_token)
     aviso.setWordWrap(True)
     layout.addWidget(aviso)
@@ -957,7 +1030,12 @@ def abrir_interface_conexao_remota(parent: QWidget) -> None:
 
     def copiar_url() -> None:
         QApplication.clipboard().setText(url)
-        _qt_message_box(parent, QMessageBox.Information, "Copiado", "URL remota copiada para a area de transferencia.")
+        _qt_message_box(
+            parent,
+            QMessageBox.Information,
+            "Copiado",
+            "URL remota copiada para a area de transferencia.",
+        )
 
     btn = QPushButton("Copiar URL")
     btn.clicked.connect(copiar_url)
@@ -974,8 +1052,16 @@ def abrir_interface_conexao_remota(parent: QWidget) -> None:
 
 
 def abrir_interface_llm_config(parent: QWidget) -> None:
-    from PyQt5.QtCore import Qt
-    from PyQt5.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox
+    from PyQt5.QtWidgets import (
+        QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QFormLayout,
+        QLabel,
+        QLineEdit,
+        QMessageBox,
+        QVBoxLayout,
+    )
 
     cfg_atual = carregar_config_llm()
     win = QDialog(parent)
@@ -1004,7 +1090,9 @@ def abrir_interface_llm_config(parent: QWidget) -> None:
     entry_router = QLineEdit(cfg_atual.get("model_router", ""))
     form.addRow("Modelo menor (interpretar comandos)", entry_router)
 
-    aviso = QLabel("Se o modelo menor ficar vazio, o principal sera usado automaticamente.")
+    aviso = QLabel(
+        "Se o modelo menor ficar vazio, o principal sera usado automaticamente."
+    )
     aviso.setStyleSheet("color: #6a6a6a;")
     layout.addWidget(aviso)
 
@@ -1035,10 +1123,17 @@ def abrir_interface_llm_config(parent: QWidget) -> None:
             _qt_message_box(win, QMessageBox.Critical, "Erro", "Provedor invalido.")
             return
         if not model_main:
-            _qt_message_box(win, QMessageBox.Critical, "Erro", "Informe o modelo principal.")
+            _qt_message_box(
+                win, QMessageBox.Critical, "Erro", "Informe o modelo principal."
+            )
             return
         if prov in {"custom", "local"} and not base_url:
-            _qt_message_box(win, QMessageBox.Critical, "Erro", "Informe a Base URL para provedor custom/local.")
+            _qt_message_box(
+                win,
+                QMessageBox.Critical,
+                "Erro",
+                "Informe a Base URL para provedor custom/local.",
+            )
             return
         if not model_router:
             model_router = model_main
@@ -1046,7 +1141,9 @@ def abrir_interface_llm_config(parent: QWidget) -> None:
         cfg_novo = {
             "provider": prov,
             "api_key": api_key,
-            "base_url": base_url if prov in {"custom", "local"} else PROVEDORES_LLM[prov],
+            "base_url": (
+                base_url if prov in {"custom", "local"} else PROVEDORES_LLM[prov]
+            ),
             "model_main": model_main,
             "model_router": model_router,
         }
@@ -1055,7 +1152,12 @@ def abrir_interface_llm_config(parent: QWidget) -> None:
         if ui:
             ui.set_ia_status("IA: API/modelos atualizados")
             QTimer.singleShot(1800, lambda: ui.set_ia_status("IA: Pronta"))
-        _qt_message_box(win, QMessageBox.Information, "Sucesso", "Configuracao aplicada com sucesso.")
+        _qt_message_box(
+            win,
+            QMessageBox.Information,
+            "Sucesso",
+            "Configuracao aplicada com sucesso.",
+        )
         win.accept()
 
     buttons.accepted.connect(salvar_llm)
@@ -1064,7 +1166,19 @@ def abrir_interface_llm_config(parent: QWidget) -> None:
 
 
 def abrir_interface_voz_config(parent: QWidget) -> None:
-    from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFileDialog, QMessageBox, QComboBox
+    from PyQt5.QtWidgets import (
+        QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QFileDialog,
+        QFormLayout,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QMessageBox,
+        QPushButton,
+        QVBoxLayout,
+    )
 
     cfg_atual = carregar_config_voz()
     win = QDialog(parent)
@@ -1112,7 +1226,9 @@ def abrir_interface_voz_config(parent: QWidget) -> None:
     layout.addWidget(aviso)
 
     def escolher_modelo_piper() -> None:
-        caminho, _ = QFileDialog.getOpenFileName(win, "Selecionar modelo Piper", filter="ONNX (*.onnx)")
+        caminho, _ = QFileDialog.getOpenFileName(
+            win, "Selecionar modelo Piper", filter="ONNX (*.onnx)"
+        )
         if caminho:
             piper_model.setText(caminho)
 
@@ -1136,17 +1252,31 @@ def abrir_interface_voz_config(parent: QWidget) -> None:
         }
 
         if prov not in {"piper", "elevenlabs"}:
-            _qt_message_box(win, QMessageBox.Critical, "Erro", "Provedor de voz invalido.")
+            _qt_message_box(
+                win, QMessageBox.Critical, "Erro", "Provedor de voz invalido."
+            )
             return
         if prov == "piper" and not cfg_novo["piper_model"]:
-            _qt_message_box(win, QMessageBox.Critical, "Erro", "Informe o modelo ONNX do Piper.")
+            _qt_message_box(
+                win, QMessageBox.Critical, "Erro", "Informe o modelo ONNX do Piper."
+            )
             return
         if prov == "elevenlabs":
             if not cfg_novo["eleven_api_key"]:
-                _qt_message_box(win, QMessageBox.Critical, "Erro", "Informe a API Key do ElevenLabs.")
+                _qt_message_box(
+                    win,
+                    QMessageBox.Critical,
+                    "Erro",
+                    "Informe a API Key do ElevenLabs.",
+                )
                 return
             if not cfg_novo["eleven_voice_id"]:
-                _qt_message_box(win, QMessageBox.Critical, "Erro", "Informe o Voice ID do ElevenLabs.")
+                _qt_message_box(
+                    win,
+                    QMessageBox.Critical,
+                    "Erro",
+                    "Informe o Voice ID do ElevenLabs.",
+                )
                 return
 
         salvar_config_voz(cfg_novo)
@@ -1154,7 +1284,9 @@ def abrir_interface_voz_config(parent: QWidget) -> None:
         if ui:
             ui.set_ia_status("IA: Voz atualizada")
             QTimer.singleShot(1800, lambda: ui.set_ia_status("IA: Pronta"))
-        _qt_message_box(win, QMessageBox.Information, "Sucesso", "Configuracao de voz aplicada.")
+        _qt_message_box(
+            win, QMessageBox.Information, "Sucesso", "Configuracao de voz aplicada."
+        )
         win.accept()
 
     buttons.accepted.connect(salvar_voz)
@@ -1163,7 +1295,15 @@ def abrir_interface_voz_config(parent: QWidget) -> None:
 
 
 def abrir_interface_cadastro(parent: QWidget) -> None:
-    from PyQt5.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout, QFileDialog, QMessageBox
+    from PyQt5.QtWidgets import (
+        QDialog,
+        QFileDialog,
+        QLabel,
+        QLineEdit,
+        QMessageBox,
+        QPushButton,
+        QVBoxLayout,
+    )
 
     win = QDialog(parent)
     win.setWindowTitle("Cadastro de Aplicativos ALTAIR")
@@ -1177,16 +1317,22 @@ def abrir_interface_cadastro(parent: QWidget) -> None:
     layout.addWidget(label_status)
 
     def adicionar_app() -> None:
-        caminho, _ = QFileDialog.getOpenFileName(win, "Escolha o executavel do app", filter="Executaveis (*.exe)")
+        caminho, _ = QFileDialog.getOpenFileName(
+            win, "Escolha o executavel do app", filter="Executaveis (*.exe)"
+        )
         if not caminho:
             return
         nome = entry_nome.text().strip().lower()
         if not nome:
-            _qt_message_box(win, QMessageBox.Critical, "Erro", "Digite um nome para o aplicativo")
+            _qt_message_box(
+                win, QMessageBox.Critical, "Erro", "Digite um nome para o aplicativo"
+            )
             return
         APLICATIVOS_CONHECIDOS[nome] = caminho
         salvar_apps()
-        _qt_message_box(win, QMessageBox.Information, "Sucesso", f"Aplicativo '{nome}' adicionado!")
+        _qt_message_box(
+            win, QMessageBox.Information, "Sucesso", f"Aplicativo '{nome}' adicionado!"
+        )
         entry_nome.clear()
         label_status.setText(f"{len(APLICATIVOS_CONHECIDOS)} apps cadastrados")
 
@@ -1194,6 +1340,7 @@ def abrir_interface_cadastro(parent: QWidget) -> None:
     btn.clicked.connect(adicionar_app)
     layout.addWidget(btn)
     win.exec_()
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 cfg_voz_inicial = carregar_config_voz()
@@ -1249,17 +1396,3 @@ ui.adicionar_mensagem(welcome_text, "ia")
 voz.speak(welcome_text)
 
 ui.run()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
