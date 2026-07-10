@@ -19,6 +19,7 @@ webdriver-manager
 cadquery
 pyvista
 pyvistaqt
+PyPDF2
 # Dev tools - install with: pip install -r requirements-dev.txt
 langchain-core>=0.3.0
 
